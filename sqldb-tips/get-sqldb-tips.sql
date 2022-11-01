@@ -2239,7 +2239,7 @@ BEGIN -- begin tips requiring VIEW SERVER STATE
 
 -- Recent CPU throttling
 IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1150) AND execute_indicator = 1)
-
+BEGIN TRY
 WITH cpu_throttling AS
 (
 SELECT SUM(duration_ms) / 60000 AS recent_history_duration_minutes,
@@ -2264,10 +2264,20 @@ SELECT 1150 AS tip_id,
 FROM cpu_throttling
 WHERE avg_cpu_delay_percent > @CPUThrottlingDelayThresholdPercent
 ;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1150);
+    ELSE
+        THROW;
+END CATCH;
+
 
 -- Recent out of memory errors
-IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1160) AND execute_indicator = 1)
 
+IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1160) AND execute_indicator = 1)
+BEGIN TRY
 WITH oom AS
 (
 SELECT SUM(duration_ms) / 60000 AS recent_history_duration_minutes,
@@ -2298,10 +2308,19 @@ WHERE count_oom > 0
       AND
       dso.database_id = DB_ID()
 ;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1160);
+    ELSE
+        THROW;
+END CATCH;
 
 -- Recent memory grant waits and timeouts
-IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1165) AND execute_indicator = 1)
 
+IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1165) AND execute_indicator = 1)
+BEGIN TRY
 WITH memgrant AS
 (
 SELECT SUM(duration_ms) / 60000 AS recent_history_duration_minutes,
@@ -2334,7 +2353,14 @@ WHERE (count_memgrant_waiter > 0 OR count_memgrant_timeout > 0)
       AND
       dso.database_id = DB_ID()
 ;
-
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1165);
+    ELSE
+        THROW;
+END CATCH;
 -- Little used nonclustered indexes
 IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1170) AND execute_indicator = 1)
 
@@ -2852,8 +2878,9 @@ BEGIN CATCH
 END CATCH;
 
 -- Data IO reaching user workload group SLO limit, or significant IO RG impact at user workload group level
-IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1230,1240) AND execute_indicator = 1)
 
+IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1230,1240) AND execute_indicator = 1)
+BEGIN TRY
 WITH
 io_rg_snapshot AS
 (
@@ -3068,10 +3095,19 @@ WHERE i.count_io_rg_impact_intervals > 0
       AND
       td.execute_indicator = 1
 ;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1230),(1240);
+    ELSE
+        THROW;
+END CATCH;
 
 -- Data IO reaching user resource pool SLO limit, or significant IO RG impact at user resource pool level
-IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1250,1260) AND execute_indicator = 1)
 
+IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1250,1260) AND execute_indicator = 1)
+BEGIN TRY
 WITH
 io_rg_snapshot AS
 (
@@ -3267,8 +3303,16 @@ WHERE i.count_io_rg_impact_intervals > 0
       AND
       td.execute_indicator = 1
 ;
-
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1250),(1260);
+    ELSE
+        THROW;
+END CATCH;
 -- Large PVS
+
 IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1270) AND execute_indicator = 1)
 
 BEGIN TRY
@@ -3340,7 +3384,7 @@ FROM pvs_db_stats;
 
 END TRY
 BEGIN CATCH
-    IF ERROR_NUMBER() = 1222
+    IF ERROR_NUMBER() = 1222 or ERROR_NUMBER() = 300
         INSERT INTO @SkippedTip (tip_id)
         VALUES (1270);
     ELSE
@@ -3502,7 +3546,7 @@ END CATCH;
 
 -- Workload group workers close to limit
 IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1360) AND execute_indicator = 1)
-
+BEGIN TRY
 WITH
 worker_snapshot AS
 (
@@ -3570,10 +3614,17 @@ SELECT 1360 AS tip_id,
 FROM worker_top_stat 
 WHERE count_high_worker_intervals > 0
 ;
-
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1360);
+    ELSE
+        THROW;
+END CATCH;
 -- Resource pool workers close to limit
 IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1370) AND execute_indicator = 1)
-
+BEGIN TRY
 WITH
 worker_snapshot AS
 (
@@ -3644,6 +3695,14 @@ SELECT 1370 AS tip_id,
 FROM worker_top_stat 
 WHERE count_high_worker_intervals > 0
 ;
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1370);
+    ELSE
+        THROW;
+END CATCH;
 
 -- Notable connectivity events
 IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1380) AND execute_indicator = 1)
@@ -3794,7 +3853,7 @@ END;
 
 END TRY
 BEGIN CATCH
-    IF ERROR_NUMBER() = 1222
+    IF (ERROR_NUMBER() = 1222 or ERROR_NUMBER() = 300)
         INSERT INTO @SkippedTip (tip_id)
         VALUES (1380);
     ELSE
@@ -3804,8 +3863,9 @@ END CATCH;
 END;
 
 -- Significant recent blocking
-IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1420) AND execute_indicator = 1)
 
+IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1420) AND execute_indicator = 1)
+BEGIN TRY
 WITH
 blocking_snapshot AS
 (
@@ -3873,10 +3933,18 @@ SELECT 1420 AS tip_id,
 FROM packed_blocking_snapshot 
 HAVING COUNT(1) > 0
 ;
-
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1420);
+    ELSE
+        THROW;
+END CATCH;
 -- High query optimizations
-IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1430) AND execute_indicator = 1)
 
+IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1430) AND execute_indicator = 1)
+BEGIN TRY
 WITH
 high_optimizations_snapshot AS
 (
@@ -3939,7 +4007,14 @@ SELECT 1430 AS tip_id,
 FROM packed_high_optimization_snapshot
 HAVING COUNT(1) > 0
 ;
-
+END TRY
+BEGIN CATCH
+    IF ERROR_NUMBER() = 300
+        INSERT INTO @SkippedTip (tip_id)
+        VALUES (1430);
+    ELSE
+        THROW;
+END CATCH;
 -- Local storage quota
 IF EXISTS (SELECT 1 FROM @TipDefinition WHERE tip_id IN (1450) AND execute_indicator = 1)
 
